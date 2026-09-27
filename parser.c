@@ -17,14 +17,16 @@ int main(int argc, char **argv){
 
 	if (memcmp(magic, "SS+m", 4) != 0){
 		printf("not SSPM");
+		fclose(map);
 		return 2;
 	}
 
 	uint32_t version;
-	fread(&version, 4, 1, map);
+	fread(&version, 2, 1, map);
 
 	if (version != 2){
 		printf("not SSPM v2");
+	 fclose(map);
 		return 3;
 	}
 
