@@ -21,12 +21,12 @@ int main(int argc, char **argv){
 		return 2;
 	}
 
-	uint32_t version;
+	uint16_t version;
 	fread(&version, 2, 1, map);
 
 	if (version != 2){
 		printf("not SSPM v2");
-	 fclose(map);
+                fclose(map);
 		return 3;
 	}
 
