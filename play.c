@@ -47,7 +47,7 @@
 
 #define CYTHIA_ENABLE_AUDIO 1
 
-#define CYTHIA_DEBUG_HITS 0
+#define CYTHIA_DEBUG_HITS 1
 #define CYTHIA_DEBUG_AUDIO 0
 
 /*
@@ -2082,54 +2082,26 @@ static int find_hit_note(
     double song_time
 )
 {
-    uint32_t first;
-    uint32_t last;
     uint32_t i;
 
-    double hit_window_seconds;
+    double hit_window_seconds =
+        (double)HIT_WINDOW_MS / 1000.0;
 
-    float hitbox_size;
-    float half_hitbox;
+    float hitbox_size =
+        NOTE_SIZE * HITBOX_SIZE;
+
+    float half_hitbox =
+        hitbox_size * 0.5f;
 
     if (
         chart == NULL ||
-        chart->note_count == 0
+        chart->notes == NULL
     )
         return -1;
 
-    hit_window_seconds =
-        (double)HIT_WINDOW_MS /
-        1000.0;
-
-    hitbox_size =
-        NOTE_SIZE *
-        HITBOX_SIZE;
-
-    half_hitbox =
-        hitbox_size *
-        0.5f;
-
-    /*
-     * Only look at notes whose hit window could currently
-     * be active.
-     */
-    first =
-        lower_bound_note_time(
-            chart,
-            song_time -
-            hit_window_seconds
-        );
-
-    last =
-        lower_bound_note_time(
-            chart,
-            song_time +
-            0.000001
-        );
-
     for (
-        i = first;
-        i < last;
+        i = 0;
+        i < chart->note_count;
         i++
     ) {
         Note *note =
@@ -2137,68 +2109,42 @@ static int find_hit_note(
 
         double note_time;
 
-        Vector3 position;
+        float note_x;
+        float note_y;
 
-        if (
-            note->state != 0
-        )
+        if (note->state != 0)
             continue;
 
         note_time =
-            (double)note->time /
-            1000.0;
+            (double)note->time / 1000.0;
 
         /*
-         * Early hits are not allowed.
+         * Only allow hits from the note's scheduled
+         * time through HIT_WINDOW_MS afterward.
          */
         if (
-            song_time <
-            note_time
+            song_time < note_time ||
+            song_time > note_time + hit_window_seconds
         )
             continue;
 
         /*
-         * The hit window has expired.
+         * Note position on the hit plane.
          */
-        if (
-            song_time >
-            note_time +
-            hit_window_seconds
-        )
-            continue;
+        note_x =
+            note->x - GRID_CENTER;
+
+        note_y =
+            -(note->y - GRID_CENTER);
 
         /*
-         * Get the note's actual position at its scheduled
-         * hit time. At that point its Z position is 0.
-         */
-        position =
-            note_world_position(
-                note,
-                note_time
-            );
-
-        if (
-            !isfinite(position.x) ||
-            !isfinite(position.y)
-        )
-            continue;
-
-        /*
-         * Invisible square hitbox centered on the note.
+         * Invisible hitbox.
          */
         if (
-            cursor.x >=
-            position.x -
-            half_hitbox &&
-            cursor.x <=
-            position.x +
-            half_hitbox &&
-            cursor.y >=
-            position.y -
-            half_hitbox &&
-            cursor.y <=
-            position.y +
-            half_hitbox
+            cursor.x >= note_x - half_hitbox &&
+            cursor.x <= note_x + half_hitbox &&
+            cursor.y >= note_y - half_hitbox &&
+            cursor.y <= note_y + half_hitbox
         ) {
             return (int)i;
         }
@@ -2608,8 +2554,7 @@ static double get_song_time(
             AUDIO_CLOCK_EPSILON
     ) {
         return
-            raw_audio_time *
-            (double)multiplier;
+            raw_audio_time;
     }
 
     return
