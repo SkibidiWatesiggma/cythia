@@ -507,7 +507,7 @@ static int get_exe_directory(
     if (
         out == NULL ||
         size == 0 ||
-        size > (size_t)DWORD_MAX
+        size > (size_t)UINT_MAX
     )
         return 0;
 
@@ -2063,309 +2063,18 @@ static void get_render_range(
 }
 
 
-/* ============================================================
- * BILLBOARD GEOMETRY
- *
- * This matches raylib's axis-Y billboard geometry:
- *
- *     right = { view.m0, view.m4, view.m8 }
- *     up    = { 0, 1, 0 }
- *
- * The supplied size is the ACTUAL final billboard width/height.
- *
- * For DrawBillboard(), raylib derives the height from the texture
- * aspect ratio.
- *
- * For DrawBillboardRec(), the caller supplies the Vector2 size
- * directly.
- *
- * The returned quad is:
- *
- *       p3 -------- p2
- *       |            |
- *       |   center   |
- *       |            |
- *       p0 -------- p1
- *
- * Padding expands the quad equally around its center.
- * ============================================================ */
-
-static int get_billboard_quad(
-    Camera3D camera,
-    Vector3 position,
-    Vector2 size,
-    float padding,
-    Vector3 *p0,
-    Vector3 *p1,
-    Vector3 *p2,
-    Vector3 *p3
-)
-{
-    Matrix view;
-
-    Vector3 right;
-    Vector3 up;
-
-    float right_length;
-    float up_length;
-
-    if (
-        p0 == NULL ||
-        p1 == NULL ||
-        p2 == NULL ||
-        p3 == NULL
-    )
-        return 0;
-
-    if (
-        !isfinite(size.x) ||
-        !isfinite(size.y) ||
-        size.x <= 0.0f ||
-        size.y <= 0.0f
-    )
-        return 0;
-
-    if (!isfinite(padding))
-        padding = 0.0f;
-
-    if (padding < 0.0f)
-        padding = 0.0f;
-
-    /*
-     * EXACT same view matrix used by raylib's billboard code.
-     */
-    view =
-        MatrixLookAt(
-            camera.position,
-            camera.target,
-            camera.up
-        );
-
-    /*
-     * EXACT raylib billboard right vector.
-     */
-    right =
-        (Vector3){
-            view.m0,
-            view.m4,
-            view.m8
-        };
-
-    /*
-     * EXACT axis-Y billboard up vector.
-     */
-    up =
-        (Vector3){
-            0.0f,
-            1.0f,
-            0.0f
-        };
-
-    right_length =
-        sqrtf(
-            right.x * right.x +
-            right.y * right.y +
-            right.z * right.z
-        );
-
-    up_length =
-        sqrtf(
-            up.x * up.x +
-            up.y * up.y +
-            up.z * up.z
-        );
-
-    if (
-        !isfinite(right_length) ||
-        !isfinite(up_length) ||
-        right_length <= 0.000001f ||
-        up_length <= 0.000001f
-    )
-        return 0;
-
-    /*
-     * Normalize the billboard axes.
-     *
-     * MatrixLookAt normally gives normalized axes, but doing this
-     * explicitly prevents a malformed camera/up vector from
-     * changing the billboard size.
-     */
-    right =
-        Vector3Scale(
-            right,
-            1.0f / right_length
-        );
-
-    up =
-        Vector3Scale(
-            up,
-            1.0f / up_length
-        );
-
-    /*
-     * Convert full dimensions to half-extents.
-     *
-     * Padding is added to BOTH sides, so the full dimensions
-     * become:
-     *
-     *     width  + 2*padding
-     *     height + 2*padding
-     */
-    {
-        float half_width =
-            size.x * 0.5f +
-            padding;
-
-        float half_height =
-            size.y * 0.5f +
-            padding;
-
-        right =
-            Vector3Scale(
-                right,
-                half_width
-            );
-
-        up =
-            Vector3Scale(
-                up,
-                half_height
-            );
-    }
-
-    /*
-     * Same centered billboard construction used by raylib.
-     */
-    *p0 =
-        Vector3Subtract(
-            position,
-            Vector3Add(
-                right,
-                Vector3Scale(
-                    up,
-                    -1.0f
-                )
-            )
-        );
-
-    *p1 =
-        Vector3Add(
-            position,
-            Vector3Add(
-                right,
-                Vector3Scale(
-                    up,
-                    -1.0f
-                )
-            )
-        );
-
-    *p2 =
-        Vector3Add(
-            position,
-            Vector3Add(
-                right,
-                up
-            )
-        );
-
-    *p3 =
-        Vector3Add(
-            position,
-            Vector3Add(
-                Vector3Scale(
-                    right,
-                    -1.0f
-                ),
-                up
-            )
-        );
-
-    return 1;
-}
-
-
-/* ============================================================
- * Exact billboard ray collision
- * ============================================================ */
-
-static int ray_hits_note_billboard(
-    Ray ray,
-    Camera3D camera,
-    Vector3 position,
-    Vector2 billboard_size,
-    float *out_distance
-)
-{
-    Vector3 p0;
-    Vector3 p1;
-    Vector3 p2;
-    Vector3 p3;
-
-    RayCollision collision;
-
-    if (
-        out_distance == NULL
-    )
-        return 0;
-
-    *out_distance =
-        FLT_MAX;
-
-    if (
-        !get_billboard_quad(
-            camera,
-            position,
-            billboard_size,
-            HITBOX_PADDING,
-            &p0,
-            &p1,
-            &p2,
-            &p3
-        )
-    )
-        return 0;
-
-    /*
-     * Raylib's GetRayCollisionQuad() checks the quad's two
-     * triangles.
-     */
-    collision =
-        GetRayCollisionQuad(
-            ray,
-            p0,
-            p1,
-            p2,
-            p3
-        );
-
-    if (!collision.hit)
-        return 0;
-
-    if (
-        !isfinite(collision.distance) ||
-        collision.distance <= 0.0f
-    )
-        return 0;
-
-    *out_distance =
-        collision.distance;
-
-    return 1;
-}
 
 
 /* ============================================================
  * Hit detection
  *
- * A note can be hit from its scheduled hit time through
- * HIT_WINDOW_MS afterward.
+ * A note becomes hittable at its scheduled hit time and remains
+ * hittable for HIT_WINDOW_MS afterward.
  *
- * The hitbox is an invisible square centered on the note's
- * grid position. Its size is the visible note size multiplied
- * by HITBOX_SIZE.
+ * The hitbox is centered on the note's position at its hit time.
+ * Its size is NOTE_SIZE * HITBOX_SIZE.
  *
- * No raycasting is used here.
+ * No raycasting is used for note collision.
  * ============================================================ */
 static int find_hit_note(
     Chart *chart,
@@ -2373,11 +2082,11 @@ static int find_hit_note(
     double song_time
 )
 {
-    double hit_window_seconds;
-
     uint32_t first;
     uint32_t last;
     uint32_t i;
+
+    double hit_window_seconds;
 
     float hitbox_size;
     float half_hitbox;
@@ -2392,10 +2101,6 @@ static int find_hit_note(
         (double)HIT_WINDOW_MS /
         1000.0;
 
-    /*
-     * The invisible hitbox is the visible note size
-     * multiplied by the configured hitbox multiplier.
-     */
     hitbox_size =
         NOTE_SIZE *
         HITBOX_SIZE;
@@ -2405,14 +2110,8 @@ static int find_hit_note(
         0.5f;
 
     /*
-     * Only search notes which could currently be hit.
-     *
-     * This is intentionally asymmetric:
-     *
-     *     note time <= song time
-     *     song time <= note time + HIT_WINDOW_MS
-     *
-     * So hitting early is NOT allowed.
+     * Only look at notes whose hit window could currently
+     * be active.
      */
     first =
         lower_bound_note_time(
@@ -2428,11 +2127,6 @@ static int find_hit_note(
             0.000001
         );
 
-    /*
-     * lower_bound_note_time() gives us notes whose time is
-     * before the current time. We still check the actual
-     * timing window below so the behavior is explicit.
-     */
     for (
         i = first;
         i < last;
@@ -2443,8 +2137,7 @@ static int find_hit_note(
 
         double note_time;
 
-        float note_x;
-        float note_y;
+        Vector3 position;
 
         if (
             note->state != 0
@@ -2456,7 +2149,7 @@ static int find_hit_note(
             1000.0;
 
         /*
-         * The note cannot be hit before its scheduled time.
+         * Early hits are not allowed.
          */
         if (
             song_time <
@@ -2465,7 +2158,7 @@ static int find_hit_note(
             continue;
 
         /*
-         * The 55 ms hit window has expired.
+         * The hit window has expired.
          */
         if (
             song_time >
@@ -2475,36 +2168,36 @@ static int find_hit_note(
             continue;
 
         /*
-         * Convert the SSPM grid coordinates into the same
-         * world-space coordinates used by the visible note.
+         * Get the note's actual position at its scheduled
+         * hit time. At that point its Z position is 0.
          */
-        note_x =
-            note->x -
-            GRID_CENTER;
-
-        note_y =
-            -(
-                note->y -
-                GRID_CENTER
+        position =
+            note_world_position(
+                note,
+                note_time
             );
 
+        if (
+            !isfinite(position.x) ||
+            !isfinite(position.y)
+        )
+            continue;
+
         /*
-         * Invisible square hitbox.
-         *
-         * The cursor must be inside the hitbox on both axes.
+         * Invisible square hitbox centered on the note.
          */
         if (
             cursor.x >=
-            note_x -
+            position.x -
             half_hitbox &&
             cursor.x <=
-            note_x +
+            position.x +
             half_hitbox &&
             cursor.y >=
-            note_y -
+            position.y -
             half_hitbox &&
             cursor.y <=
-            note_y +
+            position.y +
             half_hitbox
         ) {
             return (int)i;
@@ -2523,7 +2216,8 @@ static void update_misses(
     double song_time,
     int *misses,
     int *combo,
-    uint32_t *next_miss_index
+    uint32_t *next_miss_index,
+    options.nofail
 )
 {
     double hit_window_seconds;
@@ -2584,7 +2278,7 @@ static void update_misses(
         ) {
             note->state = 2;
 
-            if (!options.noFail) {
+            if (!options.nofail) {
                 (*misses)++;
                 *combo = 0;
             }
