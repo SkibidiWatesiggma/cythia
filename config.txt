@@ -1,1 +1,1 @@
-COLORSET_PATH="path to ur colorset"
+COLORSET_PATH="C:\path\to\colorset.txt"

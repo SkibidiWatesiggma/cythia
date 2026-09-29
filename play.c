@@ -47,7 +47,7 @@
 
 #define CYTHIA_ENABLE_AUDIO 1
 
-#define CYTHIA_DEBUG_HITS 1
+#define CYTHIA_DEBUG_HITS 0
 #define CYTHIA_DEBUG_AUDIO 0
 
 /*
@@ -1946,11 +1946,10 @@ static Vector3 note_world_position(
         APPROACH_RATE_M_S;
 
     return (Vector3){
-        note->x -
-            GRID_CENTER,
-
-        -(note->y -
+        -(note->x -
             GRID_CENTER),
+
+        -(note->y - GRID_CENTER),
 
         (float)distance
     };
@@ -2090,9 +2089,6 @@ static int find_hit_note(
     float hitbox_size =
         NOTE_SIZE * HITBOX_SIZE;
 
-    float half_hitbox =
-        hitbox_size * 0.5f;
-
     if (
         chart == NULL ||
         chart->notes == NULL ||
@@ -2119,49 +2115,30 @@ static int find_hit_note(
         note_time =
             (double)note->time / 1000.0;
 
-        /*
-         * Notes are sorted by time.
-         * Once we're past the current hit window,
-         * later notes can't be hittable yet.
-         */
         if (
-            note_time >
-            song_time
-        )
-            break;
-
-        /*
-         * Only allow hits from the exact hit time
-         * through HIT_WINDOW_MS afterward.
-         */
-        if (
+            song_time < note_time ||
             song_time >
-            note_time +
-            hit_window_seconds
+            note_time + hit_window_seconds
         )
             continue;
 
-        /*
-         * Note's position when it reaches the grid.
-         */
         note_x =
-            note->x - GRID_CENTER;
+            -(note->x - GRID_CENTER);
 
         note_y =
             -(note->y - GRID_CENTER);
 
-        /*
-         * Invisible hitbox.
-         */
+
+
         if (
             cursor.x >=
-            note_x - half_hitbox &&
+            note_x - hitbox_size &&
             cursor.x <=
-            note_x + half_hitbox &&
+            note_x + hitbox_size &&
             cursor.y >=
-            note_y - half_hitbox &&
+            note_y - hitbox_size &&
             cursor.y <=
-            note_y + half_hitbox
+            note_y + hitbox_size
         ) {
             return (int)i;
         }
@@ -2180,7 +2157,9 @@ static void update_misses(
     int *misses,
     int *combo,
     uint32_t *next_miss_index,
-    int nofail
+    int nofail,
+    int *hp,
+    double *health_step
 )
 {
     double hit_window_seconds;
@@ -2189,7 +2168,9 @@ static void update_misses(
         chart == NULL ||
         misses == NULL ||
         combo == NULL ||
-        next_miss_index == NULL
+        next_miss_index == NULL ||
+        hp == NULL ||
+        health_step == NULL
     )
         return;
 
@@ -2241,12 +2222,38 @@ static void update_misses(
         ) {
             note->state = 2;
 
-            if (!nofail) {
-                (*misses)++;
-                *combo = 0;
-            }
+            (*misses)++;
+            *combo = 0;
+
+            /*
+             * Remove health.
+             */
+            *hp -=
+                (int)(*health_step);
+
+            if (
+                *hp < 0
+            )
+                *hp = 0;
+
+            /*
+             * Make subsequent misses
+             * hurt more.
+             */
+            *health_step *= 1.2;
+
+            if (
+                *health_step > 100.0
+            )
+                *health_step = 100.0;
+
+            /*
+             * Nofail allows the game to
+             * continue at 0 HP.
+             */
 
 #if CYTHIA_DEBUG_HITS
+
             fprintf(
                 stderr,
                 "[MISS] note=%u target=%.3f current=%.3f\n",
@@ -2254,13 +2261,13 @@ static void update_misses(
                 note_time,
                 song_time
             );
+
 #endif
         }
 
         (*next_miss_index)++;
     }
 }
-
 
 /* ============================================================
  * Rendering
@@ -2393,7 +2400,8 @@ static void draw_hud(
     int score,
     int hits,
     int misses,
-    double song_time
+    double song_time,
+    int hp
 )
 {
     int total;
@@ -2479,11 +2487,22 @@ static void draw_hud(
         WHITE
     );
 
+    DrawText(
+        TextFormat(
+            "HP: %d/100",
+            hp
+        ),
+        20,
+        130,
+        20,
+        WHITE
+    );
+
 #if CYTHIA_DEBUG_HITS
     DrawText(
         time_text,
         20,
-        128,
+        158,
         20,
         WHITE
     );
@@ -2624,6 +2643,9 @@ int main(
 
     int misses =
         0;
+
+    int hp = 100;
+    double health_step = 15.0;
 
     int combo =
         0;
@@ -3447,120 +3469,138 @@ int main(
          * Hit detection
          * ---------------------------------------------------- */
 
-        if (
-            IsMouseButtonPressed(
-                MOUSE_BUTTON_LEFT
-            )
-        ) {
-            hit_index =
-                find_hit_note(
-                     &chart,
-                     cursor,
-                     song_time
-                );
-
-#if CYTHIA_DEBUG_HITS
-
-            fprintf(
-                stderr,
-                "[CLICK] mouse=(%.1f, %.1f) time=%.3f index=%d\n",
-                mouse.x,
-                mouse.y,
-                song_time,
-                hit_index
+        hit_index =
+            find_hit_note(
+                &chart,
+                cursor,
+                song_time
             );
 
+#if CYTHIA_DEBUG_HITS
+
+        fprintf(
+            stderr,
+            "[AIM] mouse=(%.1f, %.1f) time=%.3f index=%d\n",
+            mouse.x,
+            mouse.y,
+            song_time,
+            hit_index
+        );
+
 #endif
 
-            if (
-                hit_index >= 0
-            ) {
-                double error;
-                int points;
+if (
+    hit_index >= 0
+) {
+    double error;
+    int points;
 
-                error =
-                    fabs(
-                        song_time -
-                        (
-                            (double)
-                            chart.notes[
-                                hit_index
-                            ].time /
-                            1000.0
-                        )
-                    );
-
-                if (
-                    error <= 0.010
-                )
-                    points = 1000;
-                else if (
-                    error <= 0.025
-                )
-                    points = 900;
-                else if (
-                    error <= 0.050
-                )
-                    points = 800;
-                else
-                    points = 700;
-
-                combo++;
-
-                score +=
-                    points *
-                    (
-                        combo >= 10
-                            ? 2
-                            : 1
-                    );
-
-                hits++;
-
+    error =
+        fabs(
+            song_time -
+            (
+                (double)
                 chart.notes[
                     hit_index
-                ].state =
-                    1;
+                ].time /
+                1000.0
+            )
+        );
+
+    if (
+        error <= 0.010
+    )
+        points = 1000;
+    else if (
+        error <= 0.025
+    )
+        points = 900;
+    else if (
+        error <= 0.050
+    )
+        points = 800;
+    else
+        points = 700;
+
+    combo++;
+
+    score +=
+        points *
+        (
+            combo >= 10
+                ? 2
+                : 1
+        );
+
+    hits++;
+
+    chart.notes[
+        hit_index
+    ].state =
+        1;
+
+    /*
+     * Restore health.
+     */
+    health_step =
+        fmax(
+            health_step / 1.45,
+            15.0
+        );
+
+    hp +=
+        (int)(
+            health_step / 1.75
+        );
+
+    if (
+        hp > 100
+    )
+        hp = 100;
 
 #if CYTHIA_DEBUG_HITS
 
-                fprintf(
-                    stderr,
-                    "[HIT] SUCCESS note=%d error=%.2fms score=%d combo=%d\n",
-                    hit_index,
-                    error * 1000.0,
-                    score,
-                    combo
-                );
+    fprintf(
+        stderr,
+        "[HIT] SUCCESS note=%d error=%.2fms score=%d combo=%d hp=%d\n",
+        hit_index,
+        error * 1000.0,
+        score,
+        combo,
+        hp
+    );
 
 #endif
-            } else {
-
-#if CYTHIA_DEBUG_HITS
-
-                fprintf(
-                    stderr,
-                    "[CLICK] No hittable note at cursor/time.\n"
-                );
-
-#endif
-
-            }
-        }
-
+}
 
         /* ----------------------------------------------------
          * Misses
          * ---------------------------------------------------- */
 
-        update_misses(
-            &chart,
-            song_time,
-            &misses,
-            &combo,
-            &next_miss_index,
-            options.nofail
-        );
+
+         update_misses(
+             &chart,
+             song_time,
+             &misses,
+             &combo,
+             &next_miss_index,
+             options.nofail,
+             &hp,
+             &health_step
+             );
+
+
+         if (
+             hp <= 0 &&
+             !options.nofail
+         ) {
+             fprintf(
+                 stderr,
+                 "[CYTHIA] You failed!\n"
+             );
+
+             break;
+         }
 
 
         /* ----------------------------------------------------
@@ -3817,7 +3857,8 @@ int main(
             score,
             hits,
             misses,
-            song_time
+            song_time,
+            hp
         );
 
         EndDrawing();
