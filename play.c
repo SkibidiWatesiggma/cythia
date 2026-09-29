@@ -2357,30 +2357,30 @@ static int ray_hits_note_billboard(
 
 /* ============================================================
  * Hit detection
+ *
+ * A note can be hit from its scheduled hit time through
+ * HIT_WINDOW_MS afterward.
+ *
+ * The hitbox is an invisible square centered on the note's
+ * grid position. Its size is the visible note size multiplied
+ * by HITBOX_SIZE.
+ *
+ * No raycasting is used here.
  * ============================================================ */
-
 static int find_hit_note(
     Chart *chart,
-    Vector2 mouse,
-    Camera3D camera,
-    double song_time,
-    Texture2D note_texture
+    Vector3 cursor,
+    double song_time
 )
 {
+    double hit_window_seconds;
+
     uint32_t first;
     uint32_t last;
     uint32_t i;
 
-    int best_index = -1;
-
-    float best_ray_distance =
-        FLT_MAX;
-
-    double hit_window_seconds;
-
-    Ray ray;
-
-    Vector2 note_billboard_size;
+    float hitbox_size;
+    float half_hitbox;
 
     if (
         chart == NULL ||
@@ -2393,36 +2393,27 @@ static int find_hit_note(
         1000.0;
 
     /*
-     * DrawBillboard() uses NOTE_SIZE as width and preserves the
-     * texture aspect ratio for height.
+     * The invisible hitbox is the visible note size
+     * multiplied by the configured hitbox multiplier.
      */
-    if (
-        note_texture.width > 0 &&
-        note_texture.height > 0
-    ) {
-        note_billboard_size =
-            (Vector2){
-                NOTE_SIZE,
-                NOTE_SIZE *
-                (
-                    (float)note_texture.height /
-                    (float)note_texture.width
-                )
-            };
-    } else {
-        note_billboard_size =
-            (Vector2){
-                NOTE_SIZE,
-                NOTE_SIZE
-            };
-    }
+    hitbox_size =
+        NOTE_SIZE *
+        HITBOX_SIZE;
 
-    ray =
-        GetMouseRay(
-            mouse,
-            camera
-        );
+    half_hitbox =
+        hitbox_size *
+        0.5f;
 
+    /*
+     * Only search notes which could currently be hit.
+     *
+     * This is intentionally asymmetric:
+     *
+     *     note time <= song time
+     *     song time <= note time + HIT_WINDOW_MS
+     *
+     * So hitting early is NOT allowed.
+     */
     first =
         lower_bound_note_time(
             chart,
@@ -2434,9 +2425,14 @@ static int find_hit_note(
         lower_bound_note_time(
             chart,
             song_time +
-            hit_window_seconds
+            0.000001
         );
 
+    /*
+     * lower_bound_note_time() gives us notes whose time is
+     * before the current time. We still check the actual
+     * timing window below so the behavior is explicit.
+     */
     for (
         i = first;
         i < last;
@@ -2446,11 +2442,9 @@ static int find_hit_note(
             &chart->notes[i];
 
         double note_time;
-        double timing_error;
 
-        float ray_distance;
-
-        Vector3 position;
+        float note_x;
+        float note_y;
 
         if (
             note->state != 0
@@ -2461,65 +2455,64 @@ static int find_hit_note(
             (double)note->time /
             1000.0;
 
-        timing_error =
-            fabs(
-                song_time -
-                note_time
-            );
-
+        /*
+         * The note cannot be hit before its scheduled time.
+         */
         if (
-            timing_error >
+            song_time <
+            note_time
+        )
+            continue;
+
+        /*
+         * The 55 ms hit window has expired.
+         */
+        if (
+            song_time >
+            note_time +
             hit_window_seconds
         )
             continue;
 
-        position =
-            note_world_position(
-                note,
-                song_time
+        /*
+         * Convert the SSPM grid coordinates into the same
+         * world-space coordinates used by the visible note.
+         */
+        note_x =
+            note->x -
+            GRID_CENTER;
+
+        note_y =
+            -(
+                note->y -
+                GRID_CENTER
             );
 
-        if (
-            !isfinite(position.x) ||
-            !isfinite(position.y) ||
-            !isfinite(position.z)
-        )
-            continue;
-
         /*
-         * The collision quad is now the same dimensions as the
-         * actual colored DrawBillboard() quad.
+         * Invisible square hitbox.
+         *
+         * The cursor must be inside the hitbox on both axes.
          */
         if (
-            !ray_hits_note_billboard(
-                ray,
-                camera,
-                position,
-                note_billboard_size,
-                &ray_distance
-            )
-        )
-            continue;
-
-        /*
-         * If several notes overlap, choose the nearest billboard
-         * intersection along the mouse ray.
-         */
-        if (
-            ray_distance <
-            best_ray_distance
+            cursor.x >=
+            note_x -
+            half_hitbox &&
+            cursor.x <=
+            note_x +
+            half_hitbox &&
+            cursor.y >=
+            note_y -
+            half_hitbox &&
+            cursor.y <=
+            note_y +
+            half_hitbox
         ) {
-            best_ray_distance =
-                ray_distance;
-
-            best_index =
-                (int)i;
+            return (int)i;
         }
     }
 
-    return best_index;
+    return -1;
 }
-
 
 /* ============================================================
  * Miss processing
@@ -3805,11 +3798,9 @@ int main(
         ) {
             hit_index =
                 find_hit_note(
-                    &chart,
-                    mouse,
-                    camera,
-                    song_time,
-                    note_texture
+                     &chart,
+                     cursor,
+                     song_time
                 );
 
 #if CYTHIA_DEBUG_HITS
