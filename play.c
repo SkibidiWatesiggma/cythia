@@ -47,8 +47,8 @@
 
 #define CYTHIA_ENABLE_AUDIO 1
 
-#define CYTHIA_DEBUG_HITS 1
-#define CYTHIA_DEBUG_AUDIO 1
+#define CYTHIA_DEBUG_HITS 0
+#define CYTHIA_DEBUG_AUDIO 0
 
 /*
  * Extra world-space hit forgiveness.
@@ -2217,7 +2217,7 @@ static void update_misses(
     int *misses,
     int *combo,
     uint32_t *next_miss_index,
-    options.nofail
+    int nofail
 )
 {
     double hit_window_seconds;
@@ -2278,7 +2278,7 @@ static void update_misses(
         ) {
             note->state = 2;
 
-            if (!options.nofail) {
+            if (!nofail) {
                 (*misses)++;
                 *combo = 0;
             }
@@ -3596,7 +3596,8 @@ int main(
             song_time,
             &misses,
             &combo,
-            &next_miss_index
+            &next_miss_index,
+            options.nofail
         );
 
 
