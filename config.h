@@ -15,8 +15,8 @@
 
 /* Notes */
 
-#define APPROACH_RATE_M_S 110 /* in m/s */
-#define SPAWN_DISTANCE_M 90 /* in m */
+#define APPROACH_RATE_M_S 70 /* in m/s */
+#define SPAWN_DISTANCE_M 40 /* in m */
 
 /* Video & Audio */
 
