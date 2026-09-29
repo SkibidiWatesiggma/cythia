@@ -2095,7 +2095,8 @@ static int find_hit_note(
 
     if (
         chart == NULL ||
-        chart->notes == NULL
+        chart->notes == NULL ||
+        chart->note_count == 0
     )
         return -1;
 
@@ -2119,17 +2120,29 @@ static int find_hit_note(
             (double)note->time / 1000.0;
 
         /*
-         * Only allow hits from the note's scheduled
-         * time through HIT_WINDOW_MS afterward.
+         * Notes are sorted by time.
+         * Once we're past the current hit window,
+         * later notes can't be hittable yet.
          */
         if (
-            song_time < note_time ||
-            song_time > note_time + hit_window_seconds
+            note_time >
+            song_time
+        )
+            break;
+
+        /*
+         * Only allow hits from the exact hit time
+         * through HIT_WINDOW_MS afterward.
+         */
+        if (
+            song_time >
+            note_time +
+            hit_window_seconds
         )
             continue;
 
         /*
-         * Note position on the hit plane.
+         * Note's position when it reaches the grid.
          */
         note_x =
             note->x - GRID_CENTER;
@@ -2141,10 +2154,14 @@ static int find_hit_note(
          * Invisible hitbox.
          */
         if (
-            cursor.x >= note_x - half_hitbox &&
-            cursor.x <= note_x + half_hitbox &&
-            cursor.y >= note_y - half_hitbox &&
-            cursor.y <= note_y + half_hitbox
+            cursor.x >=
+            note_x - half_hitbox &&
+            cursor.x <=
+            note_x + half_hitbox &&
+            cursor.y >=
+            note_y - half_hitbox &&
+            cursor.y <=
+            note_y + half_hitbox
         ) {
             return (int)i;
         }
