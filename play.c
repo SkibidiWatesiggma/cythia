@@ -43,6 +43,25 @@
 #define GRID_CENTER 1.5f
 
 #define NOTE_SIZE 0.72f
+
+/*
+ * 3D note model.
+ *
+ * The supplied note.obj is approximately:
+ *
+ *   X = 0.20  (thickness)
+ *   Y = 1.75
+ *   Z = 1.75
+ *
+ * After rotating 90 degrees around Y, X becomes depth.
+ *
+ * 1.75 * 0.4114286 ~= 0.72
+ *
+ * This keeps the 3D note approximately the same size
+ * as the original 256x256 billboard note.
+ */
+#define NOTE_MODEL_SCALE 0.4114286f
+#define NOTE_MODEL_ROTATION 90.0f
 #define CURSOR_SIZE 0.52f
 
 #define CYTHIA_ENABLE_AUDIO 1
@@ -2632,6 +2651,9 @@ int main(
     Texture2D cursor_texture =
         {0};
 
+    Model note_model =
+        {0};
+
     Camera3D camera =
         {0};
 
@@ -2669,6 +2691,7 @@ int main(
     char map_path[32768];
 
     char note_path[MAX_PATH];
+    char note_model_path[MAX_PATH];
     char border_path[MAX_PATH];
     char cursor_path[MAX_PATH];
 
@@ -3042,6 +3065,11 @@ int main(
 
     if (
         !build_asset_path(
+            note_model_path,
+            sizeof(note_model_path),
+            "note.obj"
+        ) ||
+        !build_asset_path(
             note_path,
             sizeof(note_path),
             "note.png"
@@ -3096,6 +3124,11 @@ int main(
             cursor_path
         );
 
+    note_model =
+        LoadModel(
+            note_model_path
+        );
+
     if (
         !IsTextureValid(
             note_texture
@@ -3105,11 +3138,14 @@ int main(
         ) ||
         !IsTextureValid(
             cursor_texture
+        ) ||
+        !IsModelValid(
+            note_model
         )
     ) {
         fprintf(
             stderr,
-            "failed to load gameplay textures\n"
+            "failed to load gameplay textures/model\n"
         );
 
         if (
@@ -3153,9 +3189,10 @@ int main(
         return 6;
     }
 
+
     fprintf(
         stderr,
-        "[CYTHIA] All gameplay textures loaded.\n"
+        "[CYTHIA] Gameplay textures and 3D note model loaded.\n"
     );
 
 
@@ -3821,11 +3858,36 @@ if (
                  * ratio for height.
                  * ------------------------------------------------ */
 
-                DrawBillboard(
-                    camera,
-                    note_texture,
+                /*
+                 * 3D note model.
+                 *
+                 * OBJ visible dimensions:
+                 *   1.75 x 1.75
+                 *
+                 * Scale:
+                 *   1.75 * 0.4114286 ~= 0.72
+                 *
+                 * This matches NOTE_SIZE.
+                 *
+                 * The OBJ's thin axis is X, while Cythia's
+                 * depth axis is Z, so rotate 90 degrees around Y.
+                 *
+                 * The border billboard remains untouched.
+                 */
+                DrawModelEx(
+                    note_model,
                     position,
-                    NOTE_SIZE,
+                    (Vector3){
+                        0.0f,
+                        1.0f,
+                        0.0f
+                    },
+                    NOTE_MODEL_ROTATION,
+                    (Vector3){
+                        NOTE_MODEL_SCALE,
+                        NOTE_MODEL_SCALE,
+                        NOTE_MODEL_SCALE
+                    },
                     note->color
                 );
             }
@@ -3921,6 +3983,15 @@ if (
     )
         UnloadTexture(
             cursor_texture
+        );
+
+    if (
+        IsModelValid(
+            note_model
+        )
+    )
+        UnloadModel(
+            note_model
         );
 
     CloseWindow();
