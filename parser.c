@@ -330,7 +330,7 @@ int main(int argc, char **argv)
 		free(mapper);
 	}
 
-	if (fseek(map, (long)definitions_offset, SEEK_SET) != 0){
+	if (_fseeki64(map, (long)definitions_offset, SEEK_SET) != 0){
 		fprintf(stderr, "failed to seek definitions\n");
 		free(map_id);
 		free(map_name);
@@ -455,7 +455,7 @@ int main(int argc, char **argv)
 		return 10;
 	}
 
-	if (fseek(map, (long)markers_offset, SEEK_SET) != 0){
+	if (_fseeki64(map, (long)markers_offset, SEEK_SET) != 0){
 		fprintf(stderr, "failed to seek markers\n");
 		free(notes);
 		free(definitions);

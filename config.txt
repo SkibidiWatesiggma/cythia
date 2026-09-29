@@ -1,0 +1,1 @@
+COLORSET_PATH="path to ur colorset"
