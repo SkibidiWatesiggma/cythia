@@ -35,7 +35,7 @@
 #include "config.h"
 
 
-#define CYTHIA_VERSION "Cythia v1.0.3"
+#define CYTHIA_VERSION "Cythia v1.1.0"
 #define RMAP_MAGIC "RMAP"
 
 #define GRID_MIN 0.0f
