@@ -16,7 +16,8 @@
 /* Notes */
 
 #define APPROACH_RATE_M_S 70 /* in m/s */
-#define SPAWN_DISTANCE_M 40 /* in m */
+#define SPAWN_DISTANCE_M 50 /* in m */
+#define HALF_GHOST 1 /* 0 or 1 */
 
 /* Video & Audio */
 

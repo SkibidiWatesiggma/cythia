@@ -40,7 +40,7 @@
 
 #define GRID_MIN 0.0f
 #define GRID_MAX 3.0f
-#define GRID_CENTER 1.5f
+#define GRID_CENTER 1.0f
 
 #define NOTE_SIZE 0.72f
 
@@ -3196,6 +3196,22 @@ int main(
     );
 
 
+    /*
+     * 2-second preparation period.
+     *
+     * The normal game loop still runs during this time so
+     * rendering and the cursor remain active. Audio and the
+     * gameplay clock start after the delay.
+     */
+#define CYTHIA_PRE_GAME_DELAY 2.0
+
+    double prepare_start_time =
+        GetTime();
+
+    int preparing =
+        1;
+
+
     /* --------------------------------------------------------
      * Start audio
      * -------------------------------------------------------- */
@@ -3204,23 +3220,7 @@ int main(
 
     fprintf(
         stderr,
-        "[AUDIO] Starting music...\n"
-    );
-
-    PlayMusicStream(
-        music
-    );
-
-    UpdateMusicStream(
-        music
-    );
-
-    game_start_time =
-        GetTime();
-
-    fprintf(
-        stderr,
-        "[AUDIO] Music started.\n"
+        "[AUDIO] Waiting for preparation period...\n"
     );
 
 #endif
@@ -3253,40 +3253,95 @@ int main(
         Vector2 mouse;
         int hit_index;
 
+        /*
+         * Wait 2 seconds before starting gameplay.
+         *
+         * We intentionally keep running the normal game loop,
+         * so the existing renderer and cursor remain active.
+         */
+        if (
+            preparing &&
+            GetTime() -
+            prepare_start_time >=
+            CYTHIA_PRE_GAME_DELAY
+        ) {
+            preparing =
+                0;
+
+#if CYTHIA_ENABLE_AUDIO
+
+            fprintf(
+                stderr,
+                "[AUDIO] Starting music...\n"
+            );
+
+            PlayMusicStream(
+                music
+            );
+
+            UpdateMusicStream(
+                music
+            );
+
+            fprintf(
+                stderr,
+                "[AUDIO] Music started.\n"
+            );
+
+#endif
+
+            game_start_time =
+                GetTime();
+
+            song_time =
+                0.0;
+        }
+
+
 #if CYTHIA_ENABLE_AUDIO
 
         double raw_audio_time;
 
-        /*
-         * Update streaming audio exactly once per frame.
-         */
-        UpdateMusicStream(
-            music
-        );
-
-        /*
-         * Read audio clock exactly once.
-         */
-        raw_audio_time =
-            (double)GetMusicTimePlayed(
+        if (!preparing) {
+            /*
+             * Update streaming audio exactly once per frame.
+             */
+            UpdateMusicStream(
                 music
             );
 
-        song_time =
-            get_song_time(
-                raw_audio_time,
-                game_start_time,
-                options.multiplier
-            );
+            /*
+             * Read audio clock exactly once.
+             */
+            raw_audio_time =
+                (double)GetMusicTimePlayed(
+                    music
+                );
+
+            song_time =
+                get_song_time(
+                    raw_audio_time,
+                    game_start_time,
+                    options.multiplier
+                );
+        } else {
+            song_time =
+                0.0;
+        }
 
 #else
 
-        song_time =
-            (
-                GetTime() -
-                game_start_time
-            ) *
-            (double)options.multiplier;
+        if (!preparing) {
+            song_time =
+                (
+                    GetTime() -
+                    game_start_time
+                ) *
+                (double)options.multiplier;
+        } else {
+            song_time =
+                0.0;
+        }
 
 #endif
 
@@ -3506,12 +3561,17 @@ int main(
          * Hit detection
          * ---------------------------------------------------- */
 
-        hit_index =
-            find_hit_note(
-                &chart,
-                cursor,
-                song_time
-            );
+        if (preparing) {
+            hit_index =
+                -1;
+        } else {
+            hit_index =
+                find_hit_note(
+                    &chart,
+                    cursor,
+                    song_time
+                );
+        }
 
 #if CYTHIA_DEBUG_HITS
 
@@ -3874,6 +3934,36 @@ if (
                  *
                  * The border billboard remains untouched.
                  */
+
+                Color note_color =
+                    note->color;
+
+#if HALF_GHOST
+                {
+                    float fade =
+                        distance /
+                        SPAWN_DISTANCE_M;
+
+                    if (
+                        fade < 0.0f
+                    )
+                        fade =
+                            0.0f;
+
+                    if (
+                        fade > 1.0f
+                    )
+                        fade =
+                            1.0f;
+
+                    note_color.a =
+                        (unsigned char)(
+                            76.0f +
+                            179.0f * fade
+                        );
+                }
+#endif
+
                 DrawModelEx(
                     note_model,
                     position,
@@ -3888,7 +3978,7 @@ if (
                         NOTE_MODEL_SCALE,
                         NOTE_MODEL_SCALE
                     },
-                    note->color
+                    note_color
                 );
             }
         }
