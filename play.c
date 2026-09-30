@@ -3958,8 +3958,8 @@ if (
 
                     note_color.a =
                         (unsigned char)(
-                            76.0f +
-                            179.0f * fade
+                            102.0f +
+                            153.0f * fade
                         );
                 }
 #endif
